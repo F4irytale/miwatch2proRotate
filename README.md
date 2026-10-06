@@ -1,73 +1,63 @@
-# miwatch2proRotate
+# MI Watch 2 Pro 屏幕旋转
 
-给 **小米 Watch 2 Pro** 用的屏幕方向旋转工具。
+针对 **小米 Watch 2 Pro** 的屏幕方向调整工具，用于规避部分工程机上陀螺仪与指南针方向反向所导致的显示异常。
 
-## 这玩意儿干什么用的
+## 背景
 
-我这台 Watch 2 Pro 是**工程机**，硬件陀螺仪和指南针的方向是反的 —— 屏幕上的方向指示和实际朝向对不上。
+部分小米 Watch 2 Pro 工程机的硬件传感器存在方向标定问题：陀螺仪与指南针的输出方向与设备实际朝向相反，导致系统界面中的方向指示（方位显示、指南针等）始终反向。
 
-传感器那层翻过一遍（`dumpsys sensorservice`、`/vendor/etc/sensors/` 下的 `sns_reg_config`、`atherton_lw_ak991x_0.json`、`oem_config.xml` 等），没找到能改的开关，属于硬件标定问题，软件层改不了。
+该问题位于传感器标定层。经排查 `/vendor/etc/sensors/` 下的配置文件（`sns_reg_config`、`atherton_lw_ak991x_0.json`、`oem_config.xml` 等）以及 `dumpsys sensorservice` 的输出，确认无法通过软件配置修正。
 
-既然修不了传感器，那就反过来 —— **把屏幕转 N 度**，让画面方向对上实际朝向。视觉上就正常了。
+作为替代方案，本项目通过**旋转屏幕显示方向**，使画面与设备实际朝向重新对齐，从视觉上消除反向问题。
 
-两种改法，按需求选：
+## 方案对比
 
-| 方式 | 生效 | 重启后 | 适用 |
+| 方案 | 生效时机 | 重启后 | 适用场景 |
 |---|---|---|---|
-| [adb 临时改](#一临时改adb一条命令) | 立即 | **失效，回到 0°** | 快速验证某个角度合不合适 |
-| [App 持久化](#二用-apk-改持久化) | 立即 | **自动恢复** | 日常长期使用 |
+| adb 临时修改 | 立即 | 失效，恢复 0° | 验证角度、临时使用 |
+| APK 持久化 | 立即 | 自动恢复 | 长期使用 |
 
-> 已经确认过：adb 改的方向**重启必丢**，所以长期用必须靠 App。
+经实测，通过 adb 修改的方向在设备重启后必然丢失，长期使用需依赖 APK 方案。
 
----
+## 方式一：adb 临时修改
 
-## 一、临时改（adb 一条命令）
+无需安装应用，适用于快速验证角度是否合适。
 
-适合先试角度。不用装任何东西。
+### 1. 连接设备
 
-### 1. 连接手表
-
-手表上打开「设置 → 关于 → 开发者选项 → 无线调试」（没有开发者选项的话，先在「关于」里连点版本号开启）。
-
-在「无线调试」页面能看到 **IP 地址和端口**，配对码也在那儿。先配对，再连接：
+在手表上开启无线调试（设置 → 关于 → 开发者选项 → 无线调试），获取设备 IP、端口及配对码。
 
 ```bash
-# 配对（只需做一次，每次开关无线调试会变）
-adb pair 192.168.1.6:42851 938957
-
-# 连接（注意：配对端口和连接端口不一样）
-adb connect 192.168.1.6:5555
-
-adb devices          # 确认连上了
+adb pair <IP>:<配对端口> <配对码>
+adb connect <IP>:<连接端口>
+adb devices
 ```
 
-> 实际端口以你手表上显示的为准，`192.168.1.6` 只是示例。
+配对端口与连接端口不同，具体以设备显示为准。
 
-### 2. 转屏幕
+### 2. 设置旋转方向
 
 ```bash
-# 关掉自动旋转，避免被传感器抢回去
+# 关闭自动旋转，防止方向被传感器覆盖
 adb shell settings put system accelerometer_rotation 0
 
 # 锁定方向
 adb shell wm user-rotation lock <N>
 ```
 
-`N` 的取值：
+`<N>` 的取值：
 
-| N | 效果 |
+| N | 旋转角度 |
 |---|---|
-| `0` | 0°（默认） |
-| `1` | 90° |
-| `2` | 180° ← **我这台工程机用这个** |
-| `3` | 270° |
+| 0 | 0°（默认） |
+| 1 | 90° |
+| 2 | 180° |
+| 3 | 270° |
 
-转完抬手看一眼就行，立即生效，不用重启。
-
-### 3. 查看当前方向 / 恢复
+### 3. 查询与恢复
 
 ```bash
-# 查看
+# 查询当前方向
 adb shell wm user-rotation
 adb shell settings get system user_rotation
 
@@ -75,102 +65,104 @@ adb shell settings get system user_rotation
 adb shell wm user-rotation lock 0
 ```
 
-**注意**：这种方式重启手表就没了，会自己变回 `0`。这就是为什么要做下面这个 App。
+> 此方式在设备重启后失效，方向将恢复为 0°。
 
----
+## 方式二：安装 APK 持久化
 
-## 二、用 APK 改（持久化）
+支持开机自动恢复，无需重复执行 adb 命令。
 
-开机自动恢复，不用每次 adb。
+### 1. 下载与安装
 
-### 1. 安装
+从 [Releases](https://github.com/F4irytale/miwatch2proRotate/releases/latest) 下载 `RotateApp.apk`，或直接使用仓库根目录下的 APK：
 
 ```bash
 adb install -r RotateApp.apk
 ```
 
-### 2. 授权（关键，必须做一次）
+### 2. 授权
 
-App 要写系统设置，需要 `WRITE_SETTINGS` 权限。手表上没有授权界面，只能用 adb 给：
+应用需要写入系统设置，依赖 `WRITE_SETTINGS` 权限。由于手表未提供授权界面，需通过 adb 授予：
 
 ```bash
 adb shell appops set com.czsmart.rotate WRITE_SETTINGS allow
 ```
 
-不授权的话，App 里点角度没反应，界面会提示"未授权"。
-
-> 卸载重装后要重新授权一次。
+未授权时，应用界面将提示「未授权」，点击角度按钮不会生效。卸载重装后需重新授权。
 
 ### 3. 使用
 
-手表应用列表里找到「**屏幕旋转**」打开（或者用 adb 启动）：
+在应用列表中找到「屏幕旋转」并打开，或通过 adb 启动：
 
 ```bash
 adb shell am start -n com.czsmart.rotate/.MainActivity
 ```
 
-界面就四个按钮：
+界面包含以下元素：
 
-- **0° / 90° / 180° / 270°** —— 点哪个转哪个，当前生效的那个会变成蓝色
-- **开机自动恢复** —— 勾上（默认开）。开着的话，重启后 `BootReceiver` 会自动把上次选的角度写回去
+- **0° / 90° / 180° / 270°**：点击立即切换，当前生效的角度以蓝色高亮显示
+- **开机自动恢复**：默认开启。开启后，设备重启时由 `BootReceiver` 自动恢复上次选择的角度
 
-因为手表重启时系统可能还会重置一次方向，所以 App 在开机后会**补写两次**（开机时一次，8 秒后再一次），确保生效。
+考虑到系统在启动过程中可能重置显示方向，应用会在开机后写入两次（启动时一次，8 秒后补写一次）以确保生效。
 
-选完就可以关了，设置是立即生效并持久保存的。
+设置立即生效并持久保存，无需保持应用运行。
 
 ### 4. 卸载
 
 ```bash
 adb uninstall com.czsmart.rotate
-adb shell wm user-rotation lock 0     # 顺手把方向复位
+adb shell wm user-rotation lock 0
 ```
 
----
-
 ## 从源码构建
-
-不想用仓库里的 APK、想自己改的话：
 
 ```bash
 export ANDROID_SDK_ROOT=/path/to/android-sdk
 bash build.sh
 ```
 
-依赖：
+### 依赖
 
-- **Android SDK** —— 需要 `build-tools/36.0.0` 和 `platforms/android-35`
-- **JDK 11+**（`javac`、`keytool`）
-- **Python 3**（往 APK 里塞 `classes.dex` 用）
-- **bash** —— Windows 上用 Git Bash
+- **Android SDK**：需包含 `build-tools/36.0.0` 与 `platforms/android-35`
+- **JDK 11 或更高版本**：需提供 `javac`、`keytool`
+- **Python 3**
+- **bash**：Windows 环境下使用 Git Bash
 
-脚本**不用 Gradle**，直接调 SDK 里的 `aapt2` → `javac` → `d8` → `zipalign` → `apksigner` 走一遍，Windows 和 Linux/macOS 都能跑（自动处理 `.exe` / `.bat` 后缀差异）。
+构建脚本不依赖 Gradle，直接调用 SDK 工具链完成 `aapt2` → `javac` → `d8` → `zipalign` → `apksigner` 流程，兼容 Windows 与 Linux/macOS。
 
-产物：`RotateApp.apk`
+输出文件：`RotateApp.apk`
 
-签名用的是仓库里的 `debug.keystore`（密码 `android`，公开的调试密钥）—— 只够自用，别拿去正式分发。
+签名使用仓库内的 `debug.keystore`（密码 `android`），仅供本地调试使用，不适用于正式分发。
 
-### 源码结构
-
-```
-src/com/czsmart/rotate/
-├── Rotation.java       读写 Settings.System.USER_ROTATION + 记住用户选择
-├── MainActivity.java   四个角度按钮 + 开机恢复开关
-└── BootReceiver.java   开机后补写方向
-```
-
-实际改的就是系统里这两个值：
+## 项目结构
 
 ```
-settings put system accelerometer_rotation 0      # 关自动旋转
-settings put system user_rotation <0|1|2|3>       # 锁定角度
+.
+├── AndroidManifest.xml
+├── build.sh                     构建脚本
+├── debug.keystore               调试签名密钥
+├── RotateApp.apk                构建产物
+├── res/drawable/ic_launcher.xml
+└── src/com/czsmart/rotate/
+    ├── Rotation.java            读写屏幕方向设置并持久化用户选择
+    ├── MainActivity.java        角度选择界面与开机恢复开关
+    └── BootReceiver.java        开机后恢复方向
 ```
 
-App 做的事和上面 adb 那两条命令完全一样，只是帮你记住选择并在开机后自动重放。
+## 实现原理
 
----
+应用修改的是系统运行时的两个配置项：
 
-## 说明
+```
+settings put system accelerometer_rotation 0
+settings put system user_rotation <0|1|2|3>
+```
 
-- 不同批次的 Watch 2 Pro 情况可能不一样，**先用 adb 那条命令试出你的正确角度**，再决定要不要装 App。
-- 只在这台工程机上验证过，其他机型自行判断。
-- 改的是 `USER_ROTATION` 这种运行时可逆的值，**不动传感器标定等持久化硬件配置**，卸载后 `wm user-rotation lock 0` 即可完全恢复。
+与 adb 方案完全一致，区别在于应用会记录用户选择，并在设备开机后自动重新写入。
+
+该方案仅修改可逆的运行时配置，不涉及传感器标定等持久化硬件参数。卸载后执行 `wm user-rotation lock 0` 即可完全恢复。
+
+## 注意事项
+
+- 不同批次的设备情况可能存在差异，建议先通过 adb 命令确定适用角度，再决定是否安装 APK
+- 目前仅在小米 Watch 2 Pro 工程机上验证，其他机型请自行评估
+- 本项目不涉及传感器固件或标定数据的修改
