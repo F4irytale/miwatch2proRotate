@@ -1,0 +1,17 @@
+# build 产物
+build/
+
+# 本地签名密钥，不要提交（仓库里的 debug.keystore 是公开的调试密钥）
+*.jks
+*.keystore
+!debug.keystore
+
+# 编辑器
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# apksigner 的增量安装签名，不需要入库
+*.idsig
